@@ -1,0 +1,33 @@
+{
+  "note": "All figures are computed from synthetic data.",
+  "first_snapshot": {
+    "snapshot_date": "2025-01-31",
+    "total_balance_lc": 103412007.45,
+    "overdue_balance_lc": 26290702.28,
+    "overdue_ratio": 0.2542,
+    "over_90_balance_lc": 1964891.76,
+    "over_90_ratio": 0.019,
+    "customers": 733,
+    "customers_over_90": 36
+  },
+  "latest_snapshot": {
+    "snapshot_date": "2025-12-31",
+    "total_balance_lc": 118204325.27,
+    "overdue_balance_lc": 49971371.74,
+    "overdue_ratio": 0.4228,
+    "over_90_balance_lc": 9511544.25,
+    "over_90_ratio": 0.0805,
+    "customers": 688,
+    "customers_over_90": 48
+  },
+  "latest_top10_overdue_concentration": 0.1964,
+  "latest_customer_trend": {
+    "Deteriorated": 259,
+    "Improved": 196,
+    "New": 75,
+    "Stable": 158
+  },
+  "avg_roll_rate_0_30_to_31_plus": 0.1912,
+  "avg_cure_rate_0_30_to_current_or_settled": 0.4167,
+  "avg_persistence_over_90": 0.9654
+}

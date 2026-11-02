@@ -1,0 +1,228 @@
+createOrReplace
+
+	ref table _Measures
+
+		/// Open balance at the latest month-end snapshot in context. Semi-additive: never summed across months.
+		measure 'Total Balance' =
+				VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						SUM ( fact_ar_open_items[amount_lc] ),
+						dim_date[snapshot_date] = LastSnapshot
+					)
+			formatString: #,0
+			displayFolder: 1. Balances
+
+		/// Balance of documents with 0 or more days in arrears.
+		measure 'Overdue Balance' =
+				CALCULATE ( [Total Balance], fact_ar_open_items[is_overdue] = TRUE () )
+			formatString: #,0
+			displayFolder: 1. Balances
+
+		/// Balance of documents not yet due.
+		measure 'Not Due Balance' =
+				CALCULATE ( [Total Balance], fact_ar_open_items[is_overdue] = FALSE () )
+			formatString: #,0
+			displayFolder: 1. Balances
+
+		/// Balance more than 90 days in arrears.
+		measure 'Over 90 Balance' =
+				CALCULATE ( [Total Balance], dim_aging_bucket[aging_bucket] = ">90" )
+			formatString: #,0
+			displayFolder: 1. Balances
+
+		/// Overdue balance / total balance.
+		measure 'Overdue %' =
+				DIVIDE ( [Overdue Balance], [Total Balance] )
+			formatString: 0.0%
+			displayFolder: 2. Ratios
+
+		/// Balance over 90 days / total balance.
+		measure 'Over 90 %' =
+				DIVIDE ( [Over 90 Balance], [Total Balance] )
+			formatString: 0.0%
+			displayFolder: 2. Ratios
+
+		/// Customers with open items at the latest snapshot in context.
+		measure 'Customers With Balance' =
+				VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						DISTINCTCOUNT ( fact_ar_open_items[customer_id] ),
+						dim_date[snapshot_date] = LastSnapshot
+					)
+			formatString: #,0
+			displayFolder: 3. Customers
+
+		/// Customers with at least one invoice more than 90 days in arrears (credit notes excluded).
+		measure 'Customers Over 90' =
+				VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						DISTINCTCOUNT ( fact_ar_open_items[customer_id] ),
+						dim_date[snapshot_date] = LastSnapshot,
+						dim_aging_bucket[aging_bucket] = ">90",
+						fact_ar_open_items[amount_lc] > 0
+					)
+			formatString: #,0
+			displayFolder: 3. Customers
+
+		/// Customers classified as Deteriorated versus the previous month (table customer_monthly).
+		measure 'Customers Deteriorated' =
+				VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						COUNTROWS ( customer_monthly ),
+						customer_monthly[trend_status] = "Deteriorated",
+						dim_date[snapshot_date] = LastSnapshot
+					)
+			formatString: #,0
+			displayFolder: 3. Customers
+
+		/// Customers classified as Improved versus the previous month (table customer_monthly).
+		measure 'Customers Improved' =
+				VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						COUNTROWS ( customer_monthly ),
+						customer_monthly[trend_status] = "Improved",
+						dim_date[snapshot_date] = LastSnapshot
+					)
+			formatString: #,0
+			displayFolder: 3. Customers
+
+		/// Customers classified as Stable versus the previous month (table customer_monthly).
+		measure 'Customers Stable' =
+				VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						COUNTROWS ( customer_monthly ),
+						customer_monthly[trend_status] = "Stable",
+						dim_date[snapshot_date] = LastSnapshot
+					)
+			formatString: #,0
+			displayFolder: 3. Customers
+
+		/// Customers classified as New versus the previous month (table customer_monthly).
+		measure 'Customers New' =
+				VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						COUNTROWS ( customer_monthly ),
+						customer_monthly[trend_status] = "New",
+						dim_date[snapshot_date] = LastSnapshot
+					)
+			formatString: #,0
+			displayFolder: 3. Customers
+
+		/// Helper: month-end date before the latest snapshot in context.
+		measure 'Previous Snapshot' =
+				VAR CurrentSnapshot = MAX ( dim_date[snapshot_date] )
+				RETURN
+					CALCULATE (
+						MAX ( dim_date[snapshot_date] ),
+						dim_date[snapshot_date] < CurrentSnapshot,
+						REMOVEFILTERS ( dim_date )
+					)
+			isHidden
+			displayFolder: 4. Month over Month
+
+		/// Total balance at the previous month-end snapshot.
+		measure 'Total Balance PM' =
+				VAR PreviousSnapshot = [Previous Snapshot]
+				RETURN
+					CALCULATE (
+						SUM ( fact_ar_open_items[amount_lc] ),
+						dim_date[snapshot_date] = PreviousSnapshot,
+						REMOVEFILTERS ( dim_date )
+					)
+			formatString: #,0
+			displayFolder: 4. Month over Month
+
+		/// Change in total balance versus the previous month.
+		measure 'Total Balance MoM %' =
+				DIVIDE ( [Total Balance] - [Total Balance PM], [Total Balance PM] )
+			formatString: +0.0%;-0.0%;0.0%
+			displayFolder: 4. Month over Month
+
+		/// Overdue balance at the previous month-end snapshot.
+		measure 'Overdue Balance PM' =
+				VAR PreviousSnapshot = [Previous Snapshot]
+				RETURN
+					CALCULATE (
+						SUM ( fact_ar_open_items[amount_lc] ),
+						fact_ar_open_items[is_overdue] = TRUE (),
+						dim_date[snapshot_date] = PreviousSnapshot,
+						REMOVEFILTERS ( dim_date )
+					)
+			formatString: #,0
+			displayFolder: 4. Month over Month
+
+		/// Change in overdue balance versus the previous month.
+		measure 'Overdue Balance MoM %' =
+				DIVIDE ( [Overdue Balance] - [Overdue Balance PM], [Overdue Balance PM] )
+			formatString: +0.0%;-0.0%;0.0%
+			displayFolder: 4. Month over Month
+
+		/// Overdue share at the previous month-end snapshot.
+		measure 'Overdue % PM' =
+				DIVIDE ( [Overdue Balance PM], [Total Balance PM] )
+			formatString: 0.0%
+			displayFolder: 4. Month over Month
+
+		/// Change in overdue share versus the previous month, in percentage points.
+		measure 'Overdue % Change (pp)' =
+				[Overdue %] - [Overdue % PM]
+			formatString: +0.0%;-0.0%;0.0%
+			displayFolder: 4. Month over Month
+
+		/// Share of the overdue balance held by the 10 customers with the largest overdue balance.
+		measure 'Top 10 Overdue Concentration %' =
+				VAR Top10 =
+					TOPN ( 10, VALUES ( dim_customer[customer_id] ), [Overdue Balance], DESC )
+				RETURN
+					DIVIDE ( CALCULATE ( [Overdue Balance], Top10 ), [Overdue Balance] )
+			formatString: 0.0%
+			displayFolder: 5. Concentration
+
+		/// Customers moving between worst aging buckets month over month (table bucket_transitions).
+		measure 'Transition Customers' =
+				SUM ( bucket_transitions[customers] )
+			formatString: #,0
+			displayFolder: 6. Roll Rates
+
+		/// Use in a matrix: rows = from_bucket_id, columns = to_bucket_id. Share of each row.
+		measure 'Roll Rate %' =
+				DIVIDE (
+					[Transition Customers],
+					CALCULATE ( [Transition Customers], REMOVEFILTERS ( bucket_transitions[to_bucket_id] ) )
+				)
+			formatString: 0%
+			displayFolder: 6. Roll Rates
+
+		/// Customers in 0-30 days that are 31+ days late one month later.
+		measure 'Roll Forward 0-30 to 31+ %' =
+				DIVIDE (
+					CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2, bucket_transitions[to_bucket_id] >= 3 ),
+					CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2 )
+				)
+			formatString: 0.0%
+			displayFolder: 6. Roll Rates
+
+		/// Customers in 0-30 days that are current or fully settled one month later.
+		measure 'Cure Rate 0-30 %' =
+				DIVIDE (
+					CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2, bucket_transitions[to_bucket_id] IN { 0, 1 } ),
+					CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2 )
+				)
+			formatString: 0.0%
+			displayFolder: 6. Roll Rates
+
+		/// Customers over 90 days that are still over 90 days one month later.
+		measure 'Persistence Over 90 %' =
+				DIVIDE (
+					CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 5, bucket_transitions[to_bucket_id] = 5 ),
+					CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 5 )
+				)
+			formatString: 0.0%
+			displayFolder: 6. Roll Rates

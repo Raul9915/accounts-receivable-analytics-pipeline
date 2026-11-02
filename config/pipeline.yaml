@@ -1,0 +1,56 @@
+# Pipeline configuration. All paths are relative to the project root.
+# Business logic lives in src/ar_pipeline; only tunable values live here.
+
+paths:
+  landing: data/landing          # raw SAP-style CSV exports (one file per company and month)
+  bronze: data/bronze            # raw data as Parquet, all columns as text, plus lineage columns
+  silver: data/silver            # typed, cleaned, deduplicated and validated data
+  gold: data/gold                # star schema and analytical tables for Power BI
+  reports: reports               # data quality report and KPI summary
+  images: images                 # charts used in the README
+
+synthetic_data:
+  seed: 42
+  history_start: "2024-06-01"    # invoices are simulated from this date to build a realistic backlog
+  first_snapshot: "2025-01-31"
+  n_snapshots: 12                # month-end snapshots (Jan-Dec 2025)
+  n_customers: 900
+  currency: PEN
+
+companies:
+  - code: "1000"
+    name: Northwind Motors S.A.
+  - code: "2000"
+    name: Contoso Trucks S.A.
+  - code: "3000"
+    name: Fabrikam Parts S.A.C.
+
+business_areas:
+  VEH: Vehicles
+  PAR: Parts
+  SRV: Service
+
+# Aging buckets based on the official "Days in Arrears" column exported by SAP.
+# Negative days mean the document is not yet due.
+aging_buckets:
+  - {id: 1, label: "Not due",   min_days: null, max_days: -1}
+  - {id: 2, label: "0-30",      min_days: 0,    max_days: 30}
+  - {id: 3, label: "31-60",     min_days: 31,   max_days: 60}
+  - {id: 4, label: "61-90",     min_days: 61,   max_days: 90}
+  - {id: 5, label: ">90",       min_days: 91,   max_days: null}
+
+customer_trend:
+  # Relative change in overdue balance that counts as a real improvement or deterioration
+  # when a customer's worst aging bucket does not change month over month.
+  overdue_change_threshold: 0.10
+
+# SQL Server serving layer (optional step: python -m ar_pipeline.load_sqlserver)
+# Every value can be overridden with environment variables so nothing machine-specific
+# or secret is committed: AR_SQL_SERVER, AR_SQL_DATABASE, AR_SQL_DRIVER, AR_SQL_USER, AR_SQL_PASSWORD.
+# If AR_SQL_USER is set, SQL authentication is used; otherwise Windows authentication.
+sqlserver:
+  server: localhost                     # e.g. localhost\SQLEXPRESS for SQL Server Express
+  database: ARAnalytics                 # must match the name used in sql/01_create_database.sql
+  driver: ODBC Driver 18 for SQL Server
+  trust_server_certificate: true        # needed for local instances with a self-signed certificate
+  batch_size: 5000

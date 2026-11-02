@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Data layers are reproducible: run `python -m ar_pipeline.run`
+data/landing/
+data/bronze/
+data/silver/
+data/quarantine/
+# data/gold/ and data/sample/ are versioned on purpose so reviewers can explore without running anything
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,26 @@
+{
+  "bronze_rows": 37251,
+  "silver_accepted_rows": 36995,
+  "silver_rejected_rows": 256,
+  "rejected_by_reason": {
+    "duplicate_document": 148,
+    "missing_customer": 45,
+    "due_date_before_posting_date": 32,
+    "zero_amount": 31
+  },
+  "days_in_arrears_mismatches": 117,
+  "fact_rows": 36995,
+  "fact_amount_lc": 1340073001.15,
+  "silver_amount_lc": 1340073001.15,
+  "snapshots": 12,
+  "checks": {
+    "bronze_rows_equal_accepted_plus_rejected": true,
+    "fact_rows_equal_silver_accepted": true,
+    "fact_amount_equal_silver_amount": true,
+    "no_duplicate_documents_in_fact": true,
+    "every_fact_row_has_customer": true,
+    "every_fact_row_has_aging_bucket": true,
+    "customer_monthly_reconciles_to_fact": true
+  },
+  "passed": true
+}

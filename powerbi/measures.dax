@@ -1,0 +1,193 @@
+// =====================================================================
+// Accounts Receivable - DAX measures (table: _Measures)
+// Fastest way to create them all: paste powerbi/measures.tmdl in TMDL view.
+// Balances are month-end SNAPSHOTS: every balance measure is semi-additive
+// and returns the latest snapshot in context, never a sum across months.
+// =====================================================================
+
+// ---------- 1. Balances ----------
+
+// Open balance at the latest month-end snapshot in context. Semi-additive: never summed across months.
+Total Balance =
+	VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			SUM ( fact_ar_open_items[amount_lc] ),
+			dim_date[snapshot_date] = LastSnapshot
+		)
+
+// Balance of documents with 0 or more days in arrears.
+Overdue Balance =
+CALCULATE ( [Total Balance], fact_ar_open_items[is_overdue] = TRUE () )
+
+// Balance of documents not yet due.
+Not Due Balance =
+CALCULATE ( [Total Balance], fact_ar_open_items[is_overdue] = FALSE () )
+
+// Balance more than 90 days in arrears.
+Over 90 Balance =
+CALCULATE ( [Total Balance], dim_aging_bucket[aging_bucket] = ">90" )
+
+// ---------- 2. Ratios ----------
+
+// Overdue balance / total balance.
+Overdue % =
+DIVIDE ( [Overdue Balance], [Total Balance] )
+
+// Balance over 90 days / total balance.
+Over 90 % =
+DIVIDE ( [Over 90 Balance], [Total Balance] )
+
+// ---------- 3. Customers ----------
+
+// Customers with open items at the latest snapshot in context.
+Customers With Balance =
+	VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			DISTINCTCOUNT ( fact_ar_open_items[customer_id] ),
+			dim_date[snapshot_date] = LastSnapshot
+		)
+
+// Customers with at least one invoice more than 90 days in arrears (credit notes excluded).
+Customers Over 90 =
+	VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			DISTINCTCOUNT ( fact_ar_open_items[customer_id] ),
+			dim_date[snapshot_date] = LastSnapshot,
+			dim_aging_bucket[aging_bucket] = ">90",
+			fact_ar_open_items[amount_lc] > 0
+		)
+
+// Customers classified as Deteriorated versus the previous month (table customer_monthly).
+Customers Deteriorated =
+	VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			COUNTROWS ( customer_monthly ),
+			customer_monthly[trend_status] = "Deteriorated",
+			dim_date[snapshot_date] = LastSnapshot
+		)
+
+// Customers classified as Improved versus the previous month (table customer_monthly).
+Customers Improved =
+	VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			COUNTROWS ( customer_monthly ),
+			customer_monthly[trend_status] = "Improved",
+			dim_date[snapshot_date] = LastSnapshot
+		)
+
+// Customers classified as Stable versus the previous month (table customer_monthly).
+Customers Stable =
+	VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			COUNTROWS ( customer_monthly ),
+			customer_monthly[trend_status] = "Stable",
+			dim_date[snapshot_date] = LastSnapshot
+		)
+
+// Customers classified as New versus the previous month (table customer_monthly).
+Customers New =
+	VAR LastSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			COUNTROWS ( customer_monthly ),
+			customer_monthly[trend_status] = "New",
+			dim_date[snapshot_date] = LastSnapshot
+		)
+
+// ---------- 4. Month over Month ----------
+
+// Helper: month-end date before the latest snapshot in context.
+Previous Snapshot =
+	VAR CurrentSnapshot = MAX ( dim_date[snapshot_date] )
+	RETURN
+		CALCULATE (
+			MAX ( dim_date[snapshot_date] ),
+			dim_date[snapshot_date] < CurrentSnapshot,
+			REMOVEFILTERS ( dim_date )
+		)
+
+// Total balance at the previous month-end snapshot.
+Total Balance PM =
+	VAR PreviousSnapshot = [Previous Snapshot]
+	RETURN
+		CALCULATE (
+			SUM ( fact_ar_open_items[amount_lc] ),
+			dim_date[snapshot_date] = PreviousSnapshot,
+			REMOVEFILTERS ( dim_date )
+		)
+
+// Change in total balance versus the previous month.
+Total Balance MoM % =
+DIVIDE ( [Total Balance] - [Total Balance PM], [Total Balance PM] )
+
+// Overdue balance at the previous month-end snapshot.
+Overdue Balance PM =
+	VAR PreviousSnapshot = [Previous Snapshot]
+	RETURN
+		CALCULATE (
+			SUM ( fact_ar_open_items[amount_lc] ),
+			fact_ar_open_items[is_overdue] = TRUE (),
+			dim_date[snapshot_date] = PreviousSnapshot,
+			REMOVEFILTERS ( dim_date )
+		)
+
+// Change in overdue balance versus the previous month.
+Overdue Balance MoM % =
+DIVIDE ( [Overdue Balance] - [Overdue Balance PM], [Overdue Balance PM] )
+
+// Overdue share at the previous month-end snapshot.
+Overdue % PM =
+DIVIDE ( [Overdue Balance PM], [Total Balance PM] )
+
+// Change in overdue share versus the previous month, in percentage points.
+Overdue % Change (pp) =
+[Overdue %] - [Overdue % PM]
+
+// ---------- 5. Concentration ----------
+
+// Share of the overdue balance held by the 10 customers with the largest overdue balance.
+Top 10 Overdue Concentration % =
+	VAR Top10 =
+		TOPN ( 10, VALUES ( dim_customer[customer_id] ), [Overdue Balance], DESC )
+	RETURN
+		DIVIDE ( CALCULATE ( [Overdue Balance], Top10 ), [Overdue Balance] )
+
+// ---------- 6. Roll Rates ----------
+
+// Customers moving between worst aging buckets month over month (table bucket_transitions).
+Transition Customers =
+SUM ( bucket_transitions[customers] )
+
+// Use in a matrix: rows = from_bucket_id, columns = to_bucket_id. Share of each row.
+Roll Rate % =
+	DIVIDE (
+		[Transition Customers],
+		CALCULATE ( [Transition Customers], REMOVEFILTERS ( bucket_transitions[to_bucket_id] ) )
+	)
+
+// Customers in 0-30 days that are 31+ days late one month later.
+Roll Forward 0-30 to 31+ % =
+	DIVIDE (
+		CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2, bucket_transitions[to_bucket_id] >= 3 ),
+		CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2 )
+	)
+
+// Customers in 0-30 days that are current or fully settled one month later.
+Cure Rate 0-30 % =
+	DIVIDE (
+		CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2, bucket_transitions[to_bucket_id] IN { 0, 1 } ),
+		CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 2 )
+	)
+
+// Customers over 90 days that are still over 90 days one month later.
+Persistence Over 90 % =
+	DIVIDE (
+		CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 5, bucket_transitions[to_bucket_id] = 5 ),
+		CALCULATE ( [Transition Customers], bucket_transitions[from_bucket_id] = 5 )
+	)
